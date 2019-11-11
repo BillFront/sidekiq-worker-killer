@@ -59,18 +59,12 @@ module Sidekiq
     end
 
     def wait_job_finish_in_grace_time
-      start = Time.now
-      loop do
-        break if start + @grace_time < Time.now || no_jobs_on_quiet_processes?
-        sleep(1)
-      end
+      timeout = Time.now + @grace_time
+      sleep(1) until timeout < Time.now || process_quiet_and_out_of_work?
     end
 
-    def no_jobs_on_quiet_processes?
-      Sidekiq::ProcessSet.new.each do |process|
-        return false if !process["busy"].zero? && process["quiet"]
-      end
-      true
+    def process_quiet_and_out_of_work?
+      sidekiq_process.stopping? && sidekiq_process["busy"].zero?
     end
 
     def current_rss
@@ -85,16 +79,18 @@ module Sidekiq
       ::Process.pid
     end
 
-    def identity
-      "#{hostname}:#{pid}"
-    end
-
     def quiet_signal
       if Gem::Version.new(Sidekiq::VERSION) >= Gem::Version.new("5.0")
         "TSTP"
       else
         "USR1"
       end
+    end
+
+    def sidekiq_process
+      Sidekiq::ProcessSet.new.find { |process|
+        process["identity"] == identity
+      } || raise("No sidekiq worker with identity #{identity} found")
     end
 
     def warn(msg)
