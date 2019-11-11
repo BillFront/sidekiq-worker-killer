@@ -41,21 +41,21 @@ module Sidekiq
     end
 
     def shutdown
-      warn "sending #{quiet_signal} to #{identity}"
-      signal(quiet_signal, pid)
+      warn "sending quiet to #{identity}"
+      sidekiq_process.quiet!
 
       warn "shutting down #{identity} in #{@grace_time} seconds"
       wait_job_finish_in_grace_time
 
-      warn "sending SIGTERM to #{identity}"
-      signal("SIGTERM", pid)
+      warn "stopping #{identity}"
+      sidekiq_process.stop!
 
       warn "waiting #{@shutdown_wait} seconds before sending " \
             "#{@kill_signal} to #{identity}"
       sleep(@shutdown_wait)
 
       warn "sending #{@kill_signal} to #{identity}"
-      signal(@kill_signal, pid)
+      ::Process.kill(@kill_signal, ::Process.pid)
     end
 
     def wait_job_finish_in_grace_time
@@ -69,22 +69,6 @@ module Sidekiq
 
     def current_rss
       ::GetProcessMem.new.mb
-    end
-
-    def signal(signal, pid)
-      ::Process.kill(signal, pid)
-    end
-
-    def pid
-      ::Process.pid
-    end
-
-    def quiet_signal
-      if Gem::Version.new(Sidekiq::VERSION) >= Gem::Version.new("5.0")
-        "TSTP"
-      else
-        "USR1"
-      end
     end
 
     def sidekiq_process
